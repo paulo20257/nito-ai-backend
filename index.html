@@ -1,0 +1,184 @@
+
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NITO LIVE</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#07110f;color:#f3fff8;font-family:Arial,sans-serif}
+header{padding:20px;text-align:center;background:#10251c;border-bottom:1px solid #244b37}
+header h1{margin:0;color:#26db91}
+header p{color:#a8c5b5;margin-bottom:0}
+main{max-width:950px;margin:25px auto;padding:15px}
+.videos{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.video{position:relative;aspect-ratio:4/3;background:#020604;border-radius:15px;overflow:hidden;border:1px solid #2b5943}
+video{width:100%;height:100%;object-fit:cover}
+.label{position:absolute;bottom:10px;left:10px;background:#000a;padding:7px;border-radius:6px}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+button,select{padding:13px;border-radius:9px;border:1px solid #315744;background:#14271e;color:white;font-size:15px}
+button{cursor:pointer}
+.primary{background:#26db91;color:#052217;font-weight:bold;border-color:#26db91}
+.danger{background:#70252d}
+.panel{margin-top:16px;background:#102019;padding:18px;border-radius:12px}
+#status{color:#a9eacb;line-height:1.5}
+@media(max-width:550px){.videos{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+<h1>NITO LIVE</h1>
+<p>Conhece pessoas através de videochamadas</p>
+</header>
+<main>
+<div class="videos">
+<div class="video">
+<video id="localVideo" autoplay muted playsinline></video>
+<div class="label">Tu</div>
+</div>
+<div class="video">
+<video id="remoteVideo" autoplay playsinline></video>
+<div class="label">Outra pessoa</div>
+</div>
+</div>
+
+<div class="panel">
+<label for="country">Escolher país: </label>
+<select id="country">
+<option value="any">Qualquer país</option>
+<option value="Angola">Angola</option>
+<option value="Portugal">Portugal</option>
+<option value="Brasil">Brasil</option>
+<option value="Moçambique">Moçambique</option>
+</select>
+<div class="controls">
+<button class="primary" id="cameraBtn">Ativar câmara</button>
+<button class="primary" id="findBtn" disabled>Encontrar pessoa</button>
+<button id="micBtn" disabled>Desligar microfone</button>
+<button id="nextBtn" class="danger" disabled>Próxima pessoa</button>
+</div>
+<p id="status">A verificar o servidor...</p>
+</div>
+</main>
+<script>
+const API="https://nito-ai-backend.onrender.com";
+const $=id=>document.getElementById(id);
+let stream=null,socket=null,pc=null,userId=null,peerId=null;
+let micOn=true;
+
+async function checkServer(){
+ try{
+  const r=await fetch(API+"/health");
+  const d=await r.json();
+  $("status").textContent=d.status==="ok"?
+   "Servidor online. Ativa a câmara para começar.":
+   "O servidor respondeu com um estado inesperado.";
+ }catch(e){
+  $("status").textContent="Não foi possível contactar o servidor.";
+ }
+}
+async function activateCamera(){
+ try{
+  if(!stream){
+   stream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+   $("localVideo").srcObject=stream;
+  }
+  $("cameraBtn").disabled=true;
+  $("cameraBtn").textContent="Câmara ativada";
+  $("findBtn").disabled=false;
+  $("micBtn").disabled=false;
+  $("status").textContent="Câmara e microfone prontos.";
+ }catch(e){
+  $("status").textContent="Permite o acesso à câmara e ao microfone nas definições do navegador.";
+ }
+}
+function closePeer(){
+ if(pc){pc.close();pc=null}
+ $("remoteVideo").srcObject=null;
+ peerId=null;
+}
+async function newPeer(){
+ closePeer();
+ pc=new RTCPeerConnection({
+  iceServers:[{urls:"stun:stun.l.google.com:19302"}]
+ });
+ stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+ pc.ontrack=e=>{$("remoteVideo").srcObject=e.streams[0]};
+ pc.onicecandidate=e=>{
+  if(e.candidate&&socket?.readyState===WebSocket.OPEN)
+   socket.send(JSON.stringify({type:"ice_candidate",candidate:e.candidate}));
+ };
+}
+async function findPerson(){
+ if(!stream){await activateCamera();if(!stream)return}
+ $("findBtn").disabled=true;
+ $("status").textContent="A procurar uma pessoa...";
+ try{
+  if(socket)socket.close();
+  const response=await fetch(API+"/api/match",{method:"POST"});
+  if(!response.ok)throw Error("match");
+  const data=await response.json();
+  userId=data.user_id;
+  socket=new WebSocket(data.websocket_url.startsWith("wss://")?
+   data.websocket_url:"wss://nito-ai-backend.onrender.com"+data.websocket_url);
+  socket.onopen=()=>{
+   socket.send(JSON.stringify({type:"join_queue",country:$("country").value}));
+   $("nextBtn").disabled=false;
+   $("status").textContent="À procura de alguém...";
+  };
+  socket.onmessage=async event=>{
+   const m=JSON.parse(event.data);
+   try{
+    if(m.type==="match_found"){
+     peerId=m.peer_id;
+     await newPeer();
+     $("status").textContent="Pessoa encontrada. A ligar vídeo...";
+     if(m.role==="caller"){
+      const offer=await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.send(JSON.stringify({type:"offer",offer:pc.localDescription}));
+     }
+    }else if(m.type==="offer"){
+     if(!pc)await newPeer();
+     await pc.setRemoteDescription(m.offer);
+     const answer=await pc.createAnswer();
+     await pc.setLocalDescription(answer);
+     socket.send(JSON.stringify({type:"answer",answer:pc.localDescription}));
+    }else if(m.type==="answer"&&pc){
+     await pc.setRemoteDescription(m.answer);
+    }else if(m.type==="ice_candidate"&&pc&&m.candidate){
+     await pc.addIceCandidate(m.candidate);
+    }else if(m.type==="peer_left"){
+     closePeer();
+     $("status").textContent="A outra pessoa saiu. Procura outra.";
+    }
+   }catch(err){console.error(err);$("status").textContent="Erro ao estabelecer vídeo. Tenta novamente."}
+  };
+  socket.onerror=()=>{$("status").textContent="Erro na ligação ao servidor."};
+  socket.onclose=()=>{$("findBtn").disabled=!stream};
+ }catch(e){
+  $("status").textContent="Falha ao iniciar procura. Tenta novamente.";
+  $("findBtn").disabled=!stream;
+ }
+}
+function nextPerson(){
+ if(socket){try{socket.send(JSON.stringify({type:"leave_call"}));socket.close()}catch(e){}}
+ socket=null;closePeer();
+ $("findBtn").disabled=!stream;
+ $("nextBtn").disabled=true;
+ $("status").textContent="Pronto para procurar outra pessoa.";
+}
+$("cameraBtn").onclick=activateCamera;
+$("findBtn").onclick=findPerson;
+$("nextBtn").onclick=nextPerson;
+$("micBtn").onclick=()=>{
+ if(!stream)return;
+ micOn=!micOn;
+ stream.getAudioTracks().forEach(t=>t.enabled=micOn);
+ $("micBtn").textContent=micOn?"Desligar microfone":"Ligar microfone";
+};
+checkServer();
+</script>
+</body>
+</html>
