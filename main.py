@@ -48,9 +48,12 @@ async def health():
 @app.post("/api/match")
 async def create_match():
     user_id = str(uuid.uuid4())
+
     return {
         "user_id": user_id,
-        "websocket_url": f"/ws/{user_id}"
+        "websocket_url": (
+            f"wss://nito-ai-backend.onrender.com/ws/{user_id}"
+        )
     }
 
 
