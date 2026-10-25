@@ -3,182 +3,583 @@
 <html lang="pt">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#080b12">
 <title>NITO LIVE</title>
+
 <style>
-*{box-sizing:border-box}
-body{margin:0;background:#07110f;color:#f3fff8;font-family:Arial,sans-serif}
-header{padding:20px;text-align:center;background:#10251c;border-bottom:1px solid #244b37}
-header h1{margin:0;color:#26db91}
-header p{color:#a8c5b5;margin-bottom:0}
-main{max-width:950px;margin:25px auto;padding:15px}
-.videos{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.video{position:relative;aspect-ratio:4/3;background:#020604;border-radius:15px;overflow:hidden;border:1px solid #2b5943}
-video{width:100%;height:100%;object-fit:cover}
-.label{position:absolute;bottom:10px;left:10px;background:#000a;padding:7px;border-radius:6px}
-.controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
-button,select{padding:13px;border-radius:9px;border:1px solid #315744;background:#14271e;color:white;font-size:15px}
-button{cursor:pointer}
-.primary{background:#26db91;color:#052217;font-weight:bold;border-color:#26db91}
-.danger{background:#70252d}
-.panel{margin-top:16px;background:#102019;padding:18px;border-radius:12px}
-#status{color:#a9eacb;line-height:1.5}
-@media(max-width:550px){.videos{grid-template-columns:1fr}}
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #080b12;
+  color: white;
+  font-family: Arial, sans-serif;
+  overscroll-behavior: none;
+}
+
+#app {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  touch-action: pan-y;
+  background:
+    radial-gradient(ellipse at 50% 35%, #183327 0%, #0b1414 38%, #080b12 75%);
+}
+
+#remoteVideo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: transparent;
+  display: none;
+}
+
+#shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(0,0,0,.35),
+    transparent 25%,
+    transparent 65%,
+    rgba(0,0,0,.45)
+  );
+}
+
+#brand {
+  position: absolute;
+  z-index: 3;
+  top: max(25px, env(safe-area-inset-top));
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  pointer-events: none;
+}
+
+#brand span {
+  color: #b7ff59;
+}
+
+#rest {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 30px;
+  text-align: center;
+  transition: opacity .25s;
+}
+
+.logo {
+  width: 88px;
+  height: 88px;
+  border: 1px solid #b7ff5960;
+  border-radius: 28px;
+  display: grid;
+  place-items: center;
+  color: #b7ff59;
+  font-size: 40px;
+  font-weight: bold;
+  box-shadow: 0 0 65px #b7ff5914;
+  margin-bottom: 25px;
+}
+
+#headline {
+  font-size: clamp(25px, 6vw, 36px);
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+#description {
+  max-width: 300px;
+  color: #aab5c7;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.gesture {
+  margin-top: 42px;
+  color: #b7ff59;
+  font-size: 14px;
+  letter-spacing: 1px;
+  animation: float 1.6s infinite ease-in-out;
+}
+
+.arrow {
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+
+#status {
+  position: absolute;
+  z-index: 3;
+  left: 20px;
+  right: 20px;
+  bottom: max(35px, env(safe-area-inset-bottom));
+  text-align: center;
+  color: #e3e9ef;
+  font-size: 14px;
+  text-shadow: 0 2px 8px #000;
+  pointer-events: none;
+}
+
+#remoteName {
+  color: #b7ff59;
+  font-weight: bold;
+}
+
+#busy {
+  display: none;
+  width: 36px;
+  height: 36px;
+  border: 3px solid #ffffff25;
+  border-top-color: #b7ff59;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  margin-bottom: 24px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(9px); }
+}
+
+@media (min-width: 700px) {
+  #app {
+    max-width: 540px;
+    margin: auto;
+    border-left: 1px solid #ffffff0d;
+    border-right: 1px solid #ffffff0d;
+  }
+
+  body {
+    background: #05070b;
+  }
+}
 </style>
 </head>
+
 <body>
-<header>
-<h1>NITO LIVE</h1>
-<p>Conhece pessoas através de videochamadas</p>
-</header>
-<main>
-<div class="videos">
-<div class="video">
-<video id="localVideo" autoplay muted playsinline></video>
-<div class="label">Tu</div>
-</div>
-<div class="video">
-<video id="remoteVideo" autoplay playsinline></video>
-<div class="label">Outra pessoa</div>
-</div>
+<div id="app">
+
+  <video id="remoteVideo" autoplay playsinline></video>
+  <div id="shade"></div>
+
+  <div id="brand">NITO <span>LIVE</span></div>
+
+  <div id="rest">
+    <div class="logo">N</div>
+    <div id="headline">Novas pessoas.<br>Novas histórias.</div>
+    <div id="description">
+      Conhece pessoas de diferentes lugares através de videochamadas.
+    </div>
+    <div id="busy"></div>
+    <div class="gesture">
+      <div class="arrow">⟶</div>
+      DESLIZA PARA A DIREITA
+    </div>
+  </div>
+
+  <div id="status">Desliza para a direita para começar</div>
 </div>
 
-<div class="panel">
-<label for="country">Escolher país: </label>
-<select id="country">
-<option value="any">Qualquer país</option>
-<option value="Angola">Angola</option>
-<option value="Portugal">Portugal</option>
-<option value="Brasil">Brasil</option>
-<option value="Moçambique">Moçambique</option>
-</select>
-<div class="controls">
-<button class="primary" id="cameraBtn">Ativar câmara</button>
-<button class="primary" id="findBtn" disabled>Encontrar pessoa</button>
-<button id="micBtn" disabled>Desligar microfone</button>
-<button id="nextBtn" class="danger" disabled>Próxima pessoa</button>
-</div>
-<p id="status">A verificar o servidor...</p>
-</div>
-</main>
 <script>
-const API="https://nito-ai-backend.onrender.com";
-const $=id=>document.getElementById(id);
-let stream=null,socket=null,pc=null,userId=null,peerId=null;
-let micOn=true;
+const API = "https://nito-ai-backend.onrender.com";
 
-async function checkServer(){
- try{
-  const r=await fetch(API+"/health");
-  const d=await r.json();
-  $("status").textContent=d.status==="ok"?
-   "Servidor online. Ativa a câmara para começar.":
-   "O servidor respondeu com um estado inesperado.";
- }catch(e){
-  $("status").textContent="Não foi possível contactar o servidor.";
- }
+const app = document.getElementById("app");
+const remoteVideo = document.getElementById("remoteVideo");
+const rest = document.getElementById("rest");
+const headline = document.getElementById("headline");
+const description = document.getElementById("description");
+const statusText = document.getElementById("status");
+const busy = document.getElementById("busy");
+
+let stream = null;
+let socket = null;
+let pc = null;
+let userId = null;
+let peerId = null;
+let state = "rest";
+let gestureStartX = null;
+let gestureStartY = null;
+let ignoreGesture = false;
+let pendingIce = [];
+
+function setStatus(text) {
+  statusText.textContent = text;
 }
-async function activateCamera(){
- try{
-  if(!stream){
-   stream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
-   $("localVideo").srcObject=stream;
+
+function showRest(message = "Desliza para a direita para começar") {
+  state = "rest";
+  remoteVideo.style.display = "none";
+  remoteVideo.srcObject = null;
+  rest.style.display = "flex";
+  rest.style.opacity = "1";
+  busy.style.display = "none";
+  headline.innerHTML = "Novas pessoas.<br>Novas histórias.";
+  description.textContent =
+    "Conhece pessoas de diferentes lugares através de videochamadas.";
+  setStatus(message);
+}
+
+function showSearching() {
+  state = "searching";
+  remoteVideo.style.display = "none";
+  remoteVideo.srcObject = null;
+  rest.style.display = "flex";
+  headline.textContent = "A procurar...";
+  description.textContent = "Estamos à procura de alguém para conectar contigo.";
+  busy.style.display = "block";
+  setStatus("A procurar uma pessoa...");
+}
+
+function showCall() {
+  state = "call";
+  rest.style.display = "none";
+  busy.style.display = "none";
+  remoteVideo.style.display = "block";
+  setStatus("Ligação ativa · Desliza para mudar de pessoa");
+}
+
+async function activateMedia() {
+  if (stream) return true;
+
+  if (!navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia) {
+    setStatus("Abre o site num navegador compatível e usa HTTPS.");
+    return false;
   }
-  $("cameraBtn").disabled=true;
-  $("cameraBtn").textContent="Câmara ativada";
-  $("findBtn").disabled=false;
-  $("micBtn").disabled=false;
-  $("status").textContent="Câmara e microfone prontos.";
- }catch(e){
-  $("status").textContent="Permite o acesso à câmara e ao microfone nas definições do navegador.";
- }
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user" },
+      audio: true
+    });
+
+    // O vídeo local não aparece no ecrã.
+    // A câmara e o microfone são enviados para o outro utilizador.
+    stream.getAudioTracks().forEach(track => {
+      track.enabled = true;
+    });
+
+    return true;
+  } catch (error) {
+    console.error(error);
+    showRest("Permite o acesso à câmara e ao microfone para continuar.");
+    return false;
+  }
 }
-function closePeer(){
- if(pc){pc.close();pc=null}
- $("remoteVideo").srcObject=null;
- peerId=null;
+
+function closePeer() {
+  if (pc) {
+    pc.ontrack = null;
+    pc.onicecandidate = null;
+    pc.close();
+    pc = null;
+  }
+
+  pendingIce = [];
+  peerId = null;
+  remoteVideo.srcObject = null;
 }
-async function newPeer(){
- closePeer();
- pc=new RTCPeerConnection({
-  iceServers:[{urls:"stun:stun.l.google.com:19302"}]
- });
- stream.getTracks().forEach(t=>pc.addTrack(t,stream));
- pc.ontrack=e=>{$("remoteVideo").srcObject=e.streams[0]};
- pc.onicecandidate=e=>{
-  if(e.candidate&&socket?.readyState===WebSocket.OPEN)
-   socket.send(JSON.stringify({type:"ice_candidate",candidate:e.candidate}));
- };
-}
-async function findPerson(){
- if(!stream){await activateCamera();if(!stream)return}
- $("findBtn").disabled=true;
- $("status").textContent="A procurar uma pessoa...";
- try{
-  if(socket)socket.close();
-  const response=await fetch(API+"/api/match",{method:"POST"});
-  if(!response.ok)throw Error("match");
-  const data=await response.json();
-  userId=data.user_id;
-  socket=new WebSocket(data.websocket_url.startsWith("wss://")?
-   data.websocket_url:"wss://nito-ai-backend.onrender.com"+data.websocket_url);
-  socket.onopen=()=>{
-   socket.send(JSON.stringify({type:"join_queue",country:$("country").value}));
-   $("nextBtn").disabled=false;
-   $("status").textContent="À procura de alguém...";
-  };
-  socket.onmessage=async event=>{
-   const m=JSON.parse(event.data);
-   try{
-    if(m.type==="match_found"){
-     peerId=m.peer_id;
-     await newPeer();
-     $("status").textContent="Pessoa encontrada. A ligar vídeo...";
-     if(m.role==="caller"){
-      const offer=await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.send(JSON.stringify({type:"offer",offer:pc.localDescription}));
-     }
-    }else if(m.type==="offer"){
-     if(!pc)await newPeer();
-     await pc.setRemoteDescription(m.offer);
-     const answer=await pc.createAnswer();
-     await pc.setLocalDescription(answer);
-     socket.send(JSON.stringify({type:"answer",answer:pc.localDescription}));
-    }else if(m.type==="answer"&&pc){
-     await pc.setRemoteDescription(m.answer);
-    }else if(m.type==="ice_candidate"&&pc&&m.candidate){
-     await pc.addIceCandidate(m.candidate);
-    }else if(m.type==="peer_left"){
-     closePeer();
-     $("status").textContent="A outra pessoa saiu. Procura outra.";
+
+async function createPeer() {
+  closePeer();
+
+  pc = new RTCPeerConnection({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" }
+    ]
+  });
+
+  stream.getTracks().forEach(track => {
+    pc.addTrack(track, stream);
+  });
+
+  pc.ontrack = event => {
+    if (event.streams && event.streams[0]) {
+      remoteVideo.srcObject = event.streams[0];
+      showCall();
+      remoteVideo.play().catch(() => {});
     }
-   }catch(err){console.error(err);$("status").textContent="Erro ao estabelecer vídeo. Tenta novamente."}
   };
-  socket.onerror=()=>{$("status").textContent="Erro na ligação ao servidor."};
-  socket.onclose=()=>{$("findBtn").disabled=!stream};
- }catch(e){
-  $("status").textContent="Falha ao iniciar procura. Tenta novamente.";
-  $("findBtn").disabled=!stream;
- }
+
+  pc.onicecandidate = event => {
+    if (event.candidate && socket &&
+        socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: "ice_candidate",
+        candidate: event.candidate
+      }));
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (!pc) return;
+
+    if (pc.connectionState === "failed") {
+      setStatus("Não foi possível estabelecer a chamada.");
+    }
+  };
 }
-function nextPerson(){
- if(socket){try{socket.send(JSON.stringify({type:"leave_call"}));socket.close()}catch(e){}}
- socket=null;closePeer();
- $("findBtn").disabled=!stream;
- $("nextBtn").disabled=true;
- $("status").textContent="Pronto para procurar outra pessoa.";
+
+async function flushIce() {
+  if (!pc || !pc.remoteDescription) return;
+
+  const candidates = pendingIce.splice(0);
+
+  for (const candidate of candidates) {
+    try {
+      await pc.addIceCandidate(candidate);
+    } catch (error) {
+      console.warn("Candidato ICE não aceite:", error);
+    }
+  }
 }
-$("cameraBtn").onclick=activateCamera;
-$("findBtn").onclick=findPerson;
-$("nextBtn").onclick=nextPerson;
-$("micBtn").onclick=()=>{
- if(!stream)return;
- micOn=!micOn;
- stream.getAudioTracks().forEach(t=>t.enabled=micOn);
- $("micBtn").textContent=micOn?"Desligar microfone":"Ligar microfone";
-};
-checkServer();
+
+async function startSearch() {
+  if (state === "searching") return;
+
+  const mediaReady = await activateMedia();
+  if (!mediaReady) return;
+
+  showSearching();
+
+  closePeer();
+
+  // Criar uma ligação nova para cada procura.
+  if (socket) {
+    try { socket.close(); } catch (e) {}
+    socket = null;
+  }
+
+  try {
+    const response = await fetch(API + "/api/match", {
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      throw new Error("O servidor não conseguiu iniciar a procura.");
+    }
+
+    const data = await response.json();
+    userId = data.user_id;
+
+    socket = new WebSocket(data.websocket_url);
+
+    socket.onopen = () => {
+      if (state !== "searching") {
+        socket.close();
+        return;
+      }
+
+      socket.send(JSON.stringify({
+        type: "join_queue",
+        country: "any"
+      }));
+
+      setStatus("À procura de alguém...");
+    };
+
+    socket.onmessage = async event => {
+      const message = JSON.parse(event.data);
+
+      try {
+        if (message.type === "match_found") {
+          if (state !== "searching") return;
+
+          peerId = message.peer_id;
+          await createPeer();
+
+          setStatus("Pessoa encontrada. A ligar...");
+
+          if (message.role === "caller") {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            socket.send(JSON.stringify({
+              type: "offer",
+              offer: pc.localDescription
+            }));
+          }
+        }
+
+        else if (message.type === "offer") {
+          if (state !== "searching") return;
+
+          if (!pc) await createPeer();
+
+          await pc.setRemoteDescription(message.offer);
+          await flushIce();
+
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          socket.send(JSON.stringify({
+            type: "answer",
+            answer: pc.localDescription
+          }));
+        }
+
+        else if (message.type === "answer" && pc) {
+          await pc.setRemoteDescription(message.answer);
+          await flushIce();
+        }
+
+        else if (message.type === "ice_candidate" &&
+                 message.candidate) {
+          if (pc && pc.remoteDescription) {
+            await pc.addIceCandidate(message.candidate);
+          } else {
+            pendingIce.push(message.candidate);
+          }
+        }
+
+        else if (message.type === "peer_left") {
+          await goRest("A outra pessoa saiu. Desliza para a direita para procurar outra.");
+        }
+
+      } catch (error) {
+        console.error(error);
+        setStatus("Erro na chamada. Desliza para a esquerda para sair.");
+      }
+    };
+
+    socket.onerror = () => {
+      if (state !== "rest") {
+        setStatus("Erro de ligação ao servidor.");
+      }
+    };
+
+    socket.onclose = () => {
+      if (state === "searching") {
+        showRest("Ligação interrompida. Desliza para a direita para tentar novamente.");
+      }
+    };
+
+  } catch (error) {
+    console.error(error);
+    showRest("Não foi possível iniciar a procura. Tenta novamente.");
+  }
+}
+
+async function goRest(message = "Em repouso · Desliza para a direita para começar") {
+  state = "rest";
+
+  const oldSocket = socket;
+  socket = null;
+
+  closePeer();
+  showRest(message);
+
+  if (oldSocket) {
+    if (oldSocket.readyState === WebSocket.OPEN) {
+      try {
+        oldSocket.send(JSON.stringify({ type: "leave_call" }));
+      } catch (e) {}
+
+      // Dar tempo para o servidor receber a saída antes de fechar.
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
+
+    try { oldSocket.close(); } catch (e) {}
+  }
+}
+
+async function nextPerson() {
+  if (state === "call") {
+    await goRest("A preparar a próxima conexão...");
+    await startSearch();
+  } else if (state === "rest") {
+    await startSearch();
+  }
+}
+
+function handleSwipe(deltaX, deltaY) {
+  if (Math.abs(deltaX) < 65) return;
+  if (Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
+
+  if (deltaX > 0) {
+    // Direita: procurar ou mudar de pessoa.
+    nextPerson();
+  } else {
+    // Esquerda: terminar e ficar em repouso.
+    if (state !== "rest") {
+      goRest();
+    }
+  }
+}
+
+// Gestos no telemóvel.
+app.addEventListener("touchstart", event => {
+  if (event.touches.length !== 1) {
+    gestureStartX = null;
+    return;
+  }
+
+  gestureStartX = event.touches[0].clientX;
+  gestureStartY = event.touches[0].clientY;
+}, { passive: true });
+
+app.addEventListener("touchend", event => {
+  if (gestureStartX === null || !event.changedTouches.length) return;
+
+  const deltaX = event.changedTouches[0].clientX - gestureStartX;
+  const deltaY = event.changedTouches[0].clientY - gestureStartY;
+
+  gestureStartX = null;
+  gestureStartY = null;
+
+  handleSwipe(deltaX, deltaY);
+}, { passive: true });
+
+// Arrastar o rato no computador.
+app.addEventListener("pointerdown", event => {
+  if (event.pointerType !== "mouse" || event.button !== 0) return;
+
+  gestureStartX = event.clientX;
+  gestureStartY = event.clientY;
+  ignoreGesture = false;
+});
+
+app.addEventListener("pointerup", event => {
+  if (event.pointerType !== "mouse" || gestureStartX === null) return;
+
+  const deltaX = event.clientX - gestureStartX;
+  const deltaY = event.clientY - gestureStartY;
+
+  gestureStartX = null;
+  gestureStartY = null;
+
+  handleSwipe(deltaX, deltaY);
+});
+
+app.addEventListener("pointercancel", () => {
+  gestureStartX = null;
+  gestureStartY = null;
+});
+
+showRest();
 </script>
 </body>
 </html>
