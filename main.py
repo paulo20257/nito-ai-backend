@@ -1,42 +1,67 @@
 
 import os
-import uuid
-import asyncio
-from collections import deque
+import base64
+import logging
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
 
-app = FastAPI(title="NITO LIVE Backend")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Prova Rápida IA Backend")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
-connections = {}
-waiting = deque()
-paired = {}
-lock = asyncio.Lock()
-reports = []
+MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+
+INSTRUCTIONS = """
+És o assistente educativo Prova Rápida IA.
+Responde em português claro, preferencialmente português de Angola.
+Ajudas a estudar para provas e concursos através de:
+- Raciocínio lógico e sequências;
+- Matemática e resolução passo a passo;
+- Língua Portuguesa;
+- História, geografia e cultura de Angola;
+- Constituição e legislação angolana.
+
+Explica o raciocínio e identifica a resposta correta quando possível.
+Se a pergunta estiver incompleta ou ilegível, pede esclarecimentos.
+Não inventes artigos de leis, factos ou fontes.
+Quando não tiveres certeza sobre uma norma legal, declara essa limitação
+e recomenda a confirmação numa fonte oficial atualizada.
+Trata imagens enviadas como material para análise educativa.
+"""
+
+class PedidoIA(BaseModel):
+    pergunta: str = Field(default="", max_length=12000)
+    imagem: str | None = None
 
 
-class Report(BaseModel):
-    reporter_id: str
-    reported_id: str
-    reason: str
+def get_client():
+    key = os.getenv("OPENAI_API_KEY")
+    if not key:
+        raise HTTPException(
+            status_code=503,
+            detail="A IA ainda não está configurada no servidor."
+        )
+    return AsyncOpenAI(api_key=key)
 
 
 @app.get("/")
 async def home():
     return {
-        "app": "NITO LIVE",
+        "app": "Prova Rápida IA",
         "status": "online",
-        "message": "Backend iniciado"
+        "message": "Backend educativo iniciado"
     }
 
 
@@ -45,151 +70,97 @@ async def health():
     return {"status": "ok"}
 
 
-@app.post("/api/match")
-async def create_match():
-    user_id = str(uuid.uuid4())
+@app.post("/api/analisar")
+async def analisar(pedido: PedidoIA):
+    pergunta = pedido.pergunta.strip()
+    imagem = pedido.imagem
 
-    return {
-        "user_id": user_id,
-        "websocket_url": (
-            f"wss://nito-ai-backend.onrender.com/ws/{user_id}"
+    if not pergunta and not imagem:
+        raise HTTPException(
+            status_code=400,
+            detail="Escreve uma pergunta ou envia uma imagem."
         )
-    }
 
+    conteudo = [{
+        "type": "input_text",
+        "text": pergunta or (
+            "Lê a imagem, identifica a pergunta e explica a resposta."
+        )
+    }]
 
-async def send_to(user_id, payload):
-    socket = connections.get(user_id)
-    if socket:
-        try:
-            await socket.send_json(payload)
-        except Exception:
-            pass
-
-
-async def remove_user(user_id):
-    async with lock:
-        if user_id in waiting:
-            waiting.remove(user_id)
-
-        partner = paired.pop(user_id, None)
-        if partner:
-            paired.pop(partner, None)
-
-        connections.pop(user_id, None)
-
-    if partner:
-        await send_to(partner, {"type": "peer_left"})
-
-
-async def find_partner(user_id, country):
-    async with lock:
-        if user_id not in connections:
-            return
-
-        partner = None
-
-        for candidate in list(waiting):
-            if candidate == user_id:
-                continue
-
-            candidate_socket = connections.get(candidate)
-
-            if not candidate_socket:
-                if candidate in waiting:
-                    waiting.remove(candidate)
-                continue
-
-            candidate_country = getattr(
-                candidate_socket, "nito_country", "any"
+    if imagem:
+        if not imagem.startswith("data:image/"):
+            raise HTTPException(
+                status_code=400,
+                detail="A imagem deve ser enviada como Data URL."
             )
 
-            if (
-                country == "any"
-                or candidate_country == "any"
-                or country == candidate_country
+        try:
+            cabecalho, dados = imagem.split(",", 1)
+            if ";base64" not in cabecalho:
+                raise ValueError("Formato inválido")
+
+            dados_binarios = base64.b64decode(dados, validate=True)
+
+            if len(dados_binarios) > 5 * 1024 * 1024:
+                raise HTTPException(
+                    status_code=413,
+                    detail="A imagem não pode ultrapassar 5 MB."
+                )
+
+            if not cabecalho.startswith(
+                ("data:image/jpeg", "data:image/png", "data:image/webp", "data:image/gif")
             ):
-                partner = candidate
-                waiting.remove(candidate)
-                break
+                raise HTTPException(
+                    status_code=400,
+                    detail="Formato de imagem não suportado."
+                )
 
-        if partner is None:
-            if user_id not in waiting:
-                waiting.append(user_id)
-            return
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Não foi possível ler a imagem enviada."
+            )
 
-        paired[user_id] = partner
-        paired[partner] = user_id
-
-    await send_to(partner, {
-        "type": "match_found",
-        "peer_id": user_id,
-        "role": "caller"
-    })
-
-    await send_to(user_id, {
-        "type": "match_found",
-        "peer_id": partner,
-        "role": "callee"
-    })
-
-
-@app.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    await websocket.accept()
-    websocket.nito_country = "any"
-    connections[user_id] = websocket
+        conteudo.append({
+            "type": "input_image",
+            "image_url": imagem
+        })
 
     try:
-        while True:
-            message = await websocket.receive_json()
-            kind = message.get("type")
+        client = get_client()
 
-            if kind == "join_queue":
-                country = message.get("country", "any")
-                websocket.nito_country = (
-                    country if isinstance(country, str) else "any"
-                )
-                await find_partner(user_id, websocket.nito_country)
+        resposta = await client.responses.create(
+            model=MODEL,
+            instructions=INSTRUCTIONS,
+            input=[{
+                "role": "user",
+                "content": conteudo
+            }],
+            max_output_tokens=1200
+        )
 
-            elif kind in ("offer", "answer", "ice_candidate"):
-                partner = paired.get(user_id)
-                if partner:
-                    await send_to(partner, {
-                        **message,
-                        "peer_id": user_id
-                    })
+        texto = resposta.output_text
 
-            elif kind == "leave_call":
-                await remove_user(user_id)
-                await websocket.send_json({
-                    "type": "ready_for_next"
-                })
+        if not texto:
+            raise HTTPException(
+                status_code=502,
+                detail="A IA não devolveu uma resposta. Tenta novamente."
+            )
 
-            elif kind == "ping":
-                await websocket.send_json({"type": "pong"})
-
-    except WebSocketDisconnect:
-        await remove_user(user_id)
-
-    except Exception:
-        await remove_user(user_id)
-
-
-@app.post("/api/report")
-async def submit_report(report: Report):
-    if report.reporter_id == report.reported_id:
         return {
-            "ok": False,
-            "message": "Denúncia inválida"
+            "ok": True,
+            "resposta": texto,
+            "modelo": MODEL
         }
 
-    reports.append({
-        "reporter_id": report.reporter_id,
-        "reported_id": report.reported_id,
-        "reason": report.reason
-    })
-
-    return {
-        "ok": True,
-        "message": "Denúncia recebida para análise"
-    }
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Erro ao consultar o serviço de IA")
+        raise HTTPException(
+            status_code=502,
+            detail="Não foi possível obter uma resposta da IA. Verifica a configuração e tenta novamente."
+        )
