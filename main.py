@@ -1,13 +1,19 @@
 import logging
 from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("zangui-credito")
 
-app = FastAPI(title="ZANGUI CRÉDITO API", version="1.0.0")
+BASE_DIR = Path(__file__).resolve().parent
+INDEX_FILE = BASE_DIR / "index.html"
+
+app = FastAPI(title="ZANGUI CRÉDITO API", version="1.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,9 +28,11 @@ class SimulationRequest(BaseModel):
     months: int = Field(ge=3, le=24)
     monthly_rate: Decimal = Field(default=Decimal("0.03"), ge=0, le=Decimal("0.08"))
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def home():
-    return {"app": "ZANGUI CRÉDITO", "status": "online", "mode": "demonstration"}
+    if not INDEX_FILE.is_file():
+        raise HTTPException(status_code=503, detail="Página inicial ainda não está disponível.")
+    return FileResponse(INDEX_FILE, media_type="text/html")
 
 @app.get("/health")
 async def health():
@@ -40,6 +48,7 @@ async def config():
         "minimum_months": 3,
         "maximum_months": 24,
         "applications_enabled": False,
+        "mode": "demonstration",
         "notice": "Simulações ilustrativas. Não são propostas nem aprovação de crédito."
     }
 
@@ -71,5 +80,5 @@ async def simulate(data: SimulationRequest):
 async def applications_disabled():
     raise HTTPException(
         status_code=503,
-        detail="A receção de pedidos reais está desativada. O serviço só poderá ser ativado após implementação de segurança, proteção de dados e validação legal."
+        detail="A receção de pedidos reais está desativada. O serviço só poderá ser ativado após validação legal, implementação de segurança e proteção de dados."
     )
